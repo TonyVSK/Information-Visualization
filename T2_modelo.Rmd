@@ -1,0 +1,198 @@
+---
+title: "Trabalho 2 — Da tabela ao gráfico"
+author: "Antonio Carlos de Oliveira Silva"
+date: "05/11/2026"
+output:
+  html_document:
+    toc: true
+---
+
+```{r configuracao, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 7, fig.height = 4.5, fig.align = "center")
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(tidyr)
+```
+
+**Trabalho 2 — Da tabela ao gráfico.** Nome: `[preencher nome completo]`. Conjunto de dados escolhido: `gapminder`.
+
+# 1. Tabela de dados
+
+```{r importar-dados}
+dados <- read_csv("dados/gapminder/gapminder.csv", show_col_types = FALSE) |>
+  mutate(
+    pais = factor(pais),
+    continente = factor(continente),
+    ano = as.integer(ano),
+    expectativa_vida = as.numeric(expectativa_vida),
+    populacao = as.numeric(populacao),
+    pib_per_capita = as.numeric(pib_per_capita)
+  )
+
+glimpse(dados)
+```
+
+Cada linha representa a observação de um país em um ano (1952–2007, em intervalos de cinco anos); há 1.704 casos e seis variáveis. `pais` é nominal (N), `continente` é nominal (N), `ano` é ordinal temporal (Otemp), e `expectativa_vida` (anos), `populacao` (habitantes) e `pib_per_capita` (dólares internacionais ajustados) são quantitativas (Q). A chave composta `pais` + `ano` determina as três medidas quantitativas: `pais, ano → expectativa_vida, populacao, pib_per_capita`; cada país também determina seu continente: `pais → continente`. `pais` sozinho não determina as medidas porque há observações repetidas do mesmo país ao longo do tempo.
+
+# 2. Transformações
+
+**Transformação 1 — valores → valores derivados.** Calculo o logaritmo decimal da população para trabalhar com sua grande amplitude entre países.
+
+```{r transformacao-1}
+dados_log <- dados |>
+  mutate(log10_populacao = log10(populacao))
+dados_log |>
+  select(pais, ano, populacao, log10_populacao) |>
+  slice_head(n = 6)
+```
+
+**Transformação 2 — estrutura → estrutura derivada.** Reorganizo as observações de países e anos em uma tabela larga, com uma coluna de expectativa de vida por ano.
+
+```{r transformacao-2}
+expectativa_larga <- dados |>
+  select(pais, ano, expectativa_vida) |>
+  pivot_wider(names_from = ano, values_from = expectativa_vida)
+glimpse(expectativa_larga)
+```
+
+**Transformação 3 — Q → O.** Uso `cut()` para converter a expectativa de vida quantitativa em uma variável ordinal de faixas, preservando sua ordem natural.
+
+```{r transformacao-3}
+faixas_expectativa <- cut(
+  dados$expectativa_vida,
+  breaks = c(-Inf, 50, 60, 70, 80, Inf),
+  labels = c("<50", "50–60", "60–70", "70–80", "80–90"),
+  right = FALSE,
+  ordered_result = TRUE
+)
+table(faixas_expectativa)
+```
+
+# 3. Gráficos
+
+## 3.1 Gráfico 1 — População e expectativa de vida em 2007
+
+```{r grafico-1}
+dados |>
+  filter(ano == 2007) |>
+  ggplot(aes(x = populacao, y = expectativa_vida, colour = continente)) +
+  geom_point(alpha = 0.8, size = 2.5) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(title = "População e expectativa de vida por país (2007)",
+       x = "População (habitantes, escala log10)", y = "Expectativa de vida (anos)",
+       colour = "Continente", caption = "Fonte: Gapminder (dados/gapminder/gapminder.csv)")
+```
+
+**Tabela de mapeamento**
+
+| Variável | Tipo (N / O / Otemp / Q / Qtemp) | Propriedade gráfica ou espacial |
+|---|:---:|---|
+| `populacao` | Q | posição horizontal (x), escala logarítmica |
+| `expectativa_vida` | Q | posição vertical (y) |
+| `continente` | N | matiz (cor), escala discreta |
+
+**Justificativa:** A posição em x e y usa duas variáveis quantitativas, mapeamento expressivo para investigar associação entre população e expectativa de vida. A população tem amplitude muito grande, por isso a escala logarítmica em x distribui melhor os países sem alterar sua ordem. O continente é nominal e recebe cores distintas, com paleta discreta; não se sugere uma ordem entre categorias. Pontos são marcas adequadas para observações individuais.
+
+## 3.2 Gráfico 2 — Expectativa média por continente
+
+```{r grafico-2}
+dados |>
+  filter(ano == 2007) |>
+  group_by(continente) |>
+  summarise(media_vida = mean(expectativa_vida), .groups = "drop") |>
+  ggplot(aes(x = continente, y = media_vida)) +
+  geom_col(fill = "#2878A5", width = 0.72) +
+  labs(title = "Expectativa média de vida por continente (2007)",
+       x = "Continente", y = "Expectativa média de vida (anos)",
+       caption = "Fonte: Gapminder (dados/gapminder/gapminder.csv)")
+```
+
+**Tabela de mapeamento**
+
+| Variável | Tipo (N / O / Otemp / Q / Qtemp) | Propriedade gráfica ou espacial |
+|---|:---:|---|
+| `continente` | N | posição horizontal (x), categorias discretas |
+| `media_vida` (derivada) | Q | posição vertical (y), comprimento da barra |
+
+**Justificativa:** A média é quantitativa e seu comprimento em uma barra alinhada a uma base comum permite comparar valores com precisão, uma propriedade efetiva para magnitudes. O continente é nominal, portanto ocupa posições categóricas separadas, sem ordenação numérica implícita. A cor única evita acrescentar uma codificação redundante que não representa uma variável adicional.
+
+## 3.3 Gráfico 3 — Distribuição entre países
+
+```{r grafico-3}
+dados |>
+  filter(ano == 2007) |>
+  ggplot(aes(x = continente, y = expectativa_vida)) +
+  geom_boxplot(fill = "#80B1D3", colour = "#24536B", outlier.alpha = 0.55) +
+  labs(title = "Distribuição da expectativa de vida entre países (2007)",
+       x = "Continente", y = "Expectativa de vida (anos)",
+       caption = "Fonte: Gapminder (dados/gapminder/gapminder.csv)")
+```
+
+**Tabela de mapeamento**
+
+| Variável | Tipo (N / O / Otemp / Q / Qtemp) | Propriedade gráfica ou espacial |
+|---|:---:|---|
+| `continente` | N | posição horizontal (x), categorias discretas |
+| `expectativa_vida` | Q | posição vertical (y), distribuição resumida por caixa e bigodes |
+
+**Justificativa:** O boxplot mostra a distribuição de uma variável quantitativa em grupos nominais: mediana, quartis, dispersão e possíveis valores extremos. A posição vertical usa uma escala comum para todos os continentes e facilita comparar as distribuições. A marca de caixa resume muitos países sem depender de cor para distinguir os grupos.
+
+## 3.4 Gráfico 4 — Forma da distribuição
+
+```{r grafico-4}
+dados |>
+  filter(ano == 2007) |>
+  ggplot(aes(x = expectativa_vida)) +
+  geom_histogram(binwidth = 5, boundary = 0, fill = "#3B8C76", colour = "white") +
+  labs(title = "Distribuição da expectativa de vida dos países (2007)",
+       x = "Expectativa de vida (anos; intervalos de 5 anos)", y = "Número de países",
+       caption = "Fonte: Gapminder (dados/gapminder/gapminder.csv)")
+```
+
+**Tabela de mapeamento**
+
+| Variável | Tipo (N / O / Otemp / Q / Qtemp) | Propriedade gráfica ou espacial |
+|---|:---:|---|
+| `expectativa_vida` | Q | posição horizontal agrupada em intervalos; contagem determina a altura |
+
+**Justificativa:** O histograma usa intervalos contíguos para uma variável quantitativa e mostra a forma da distribuição entre países. A posição horizontal preserva a ordem e a proximidade dos valores; a altura representa a contagem de países em cada intervalo. Intervalos de cinco anos dão uma visão geral legível sem codificações de cor desnecessárias.
+
+# 4. Makeover
+
+Escolhi o gráfico `ruim_05.png`, que codifica continentes como números inteiros e usa uma escala contínua de cor.
+
+**Diagnóstico:** O gráfico atribui números à variável nominal `continente` e mapeia esses códigos em uma escala contínua de cor, afirmando uma ordem e distâncias entre continentes que a tabela não contém.
+
+```{r makeover}
+dados_makeover <- read_csv("dados/graficos_ruins/gapminder_2007.csv", show_col_types = FALSE) |>
+  mutate(continente = factor(continente,
+    levels = c("Africa", "Americas", "Asia", "Europe", "Oceania")))
+
+refeito <- ggplot(dados_makeover,
+                  aes(x = pib_per_capita, y = expectativa_vida, colour = continente)) +
+  geom_point(alpha = 0.75, size = 2.5) +
+  scale_x_log10(labels = scales::label_dollar()) +
+  scale_colour_brewer(palette = "Dark2", drop = FALSE) +
+  labs(title = "Renda e expectativa de vida por país (2007)",
+       x = "PIB per capita (dólares internacionais, escala log10)",
+       y = "Expectativa de vida (anos)", colour = "Continente",
+       caption = "Fonte: Gapminder (dados/graficos_ruins/gapminder_2007.csv)") +
+  theme_minimal()
+
+refeito
+```
+
+**O que foi corrigido:**
+
+1. `continente` é convertido em fator e mapeado a uma escala discreta de matizes. Isso respeita seu tipo nominal e remove a falsa ordem que uma escala contínua sugere (expressividade).
+2. Os pontos ficam parcialmente transparentes (`alpha = 0.75`), reduzindo a obstrução quando países se sobrepõem e permitindo perceber concentrações sem trocar a marca de ponto (efetividade). O rótulo do eixo também explicita a unidade monetária e a escala logarítmica.
+
+# Fontes consultadas
+
+Kit de dados do curso (`README.md` de `dados/gapminder` e `dados/graficos_ruins`) e modelo/enunciado do Trabalho 2. Código elaborado com auxílio de inteligência artificial generativa (OpenAI, ChatGPT/Codex).
+
+
+
